@@ -90,7 +90,7 @@ const ChatListPage = () => {
           // Count unread messages (where current user is not the sender and read_at is null)
           const { count: unreadCount, error: countError } = await supabase
             .from("messages")
-            .select("id", { count: true })
+            .select("id", { count: "exact" }) // Change from true to "exact"
             .eq("chat_id", chatId)
             .neq("sender_id", user.id)
             .is("read_at", null);

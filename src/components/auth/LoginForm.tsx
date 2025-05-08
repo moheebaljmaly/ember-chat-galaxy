@@ -1,50 +1,42 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const LoginForm = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { signIn } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     
     if (!email || !password) {
-      toast({
-        title: "خطأ",
-        description: "يرجى إدخال البريد الإلكتروني وكلمة المرور",
-        variant: "destructive",
-      });
+      setError("يرجى إدخال البريد الإلكتروني وكلمة المرور");
       return;
     }
     
     setIsLoading(true);
     
-    // In a real app, here we would connect to Supabase
-    // This is just a mock to show the flow
-    setTimeout(() => {
-      // Simulated successful login
-      localStorage.setItem("chatUser", JSON.stringify({ email, username: "User" }));
-      
-      toast({
-        title: "تم تسجيل الدخول بنجاح",
-        description: "أهلاً بك مرة أخرى!",
-      });
-      
+    try {
+      await signIn(email, password);
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
       setIsLoading(false);
-      navigate("/chats");
-    }, 1000);
+    }
   };
 
   return (
@@ -56,6 +48,11 @@ const LoginForm = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
         <form onSubmit={handleLogin}>
           <div className="space-y-4">
             <div className="space-y-2">

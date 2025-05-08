@@ -5,29 +5,26 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/use-toast";
 
-// Mock user data
-const mockUsers = [
-  { id: "1", name: "أحمد محمد", email: "ahmed@example.com", avatar: "" },
-  { id: "2", name: "سارة أحمد", email: "sara@example.com", avatar: "" },
-  { id: "3", name: "محمد علي", email: "mohamed@example.com", avatar: "" },
-  { id: "4", name: "فاطمة حسن", email: "fatima@example.com", avatar: "" },
-];
-
-type User = {
+type UserType = {
   id: string;
-  name: string;
+  username: string;
   email: string;
-  avatar: string;
+  avatar_url: string | null;
 };
 
 const SearchUsers = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [results, setResults] = useState<User[]>([]);
+  const [results, setResults] = useState<UserType[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!searchTerm.trim()) {
       setResults([]);
       return;
@@ -35,17 +32,28 @@ const SearchUsers = () => {
 
     setIsSearching(true);
     
-    // Simulate API call with timeout
-    setTimeout(() => {
-      const filtered = mockUsers.filter(
-        (user) =>
-          user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          user.email.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+    try {
+      // Search for users by username or email
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, email, avatar_url")
+        .or(`username.ilike.%${searchTerm}%, email.ilike.%${searchTerm}%`)
+        .neq("id", user?.id) // Exclude current user
+        .limit(10);
       
-      setResults(filtered);
+      if (error) throw error;
+      
+      setResults(data || []);
+    } catch (error: any) {
+      console.error("Error searching users:", error.message);
+      toast({
+        title: "خطأ في البحث",
+        description: "حدث خطأ أثناء البحث عن المستخدمين",
+        variant: "destructive",
+      });
+    } finally {
       setIsSearching(false);
-    }, 500);
+    }
   };
 
   const clearSearch = () => {
@@ -53,8 +61,87 @@ const SearchUsers = () => {
     setResults([]);
   };
 
-  const startChat = (userId: string) => {
-    navigate(`/chat/${userId}`);
+  const startChat = async (otherUserId: string) => {
+    if (!user) return;
+    
+    try {
+      // Check if chat already exists
+      const { data: existingChats, error: checkError } = await supabase
+        .from("chat_participants")
+        .select(`
+          chat_id,
+          chats!inner (
+            id
+          )
+        `)
+        .eq("user_id", user.id);
+
+      if (checkError) throw checkError;
+      
+      let chatId: string | null = null;
+      
+      if (existingChats && existingChats.length > 0) {
+        // Check if there's a chat with just these two users
+        for (const chat of existingChats) {
+          const { data: participants, error: partError } = await supabase
+            .from("chat_participants")
+            .select("user_id")
+            .eq("chat_id", chat.chat_id);
+            
+          if (partError) throw partError;
+          
+          if (participants && participants.length === 2 && 
+              participants.some(p => p.user_id === otherUserId)) {
+            chatId = chat.chat_id;
+            break;
+          }
+        }
+      }
+      
+      // If no existing chat, create a new one
+      if (!chatId) {
+        // Create new chat
+        const { data: newChat, error: chatError } = await supabase
+          .from("chats")
+          .insert({})
+          .select()
+          .single();
+          
+        if (chatError) throw chatError;
+        
+        chatId = newChat.id;
+        
+        // Add current user as participant
+        const { error: currentUserError } = await supabase
+          .from("chat_participants")
+          .insert({
+            chat_id: chatId,
+            user_id: user.id
+          });
+          
+        if (currentUserError) throw currentUserError;
+        
+        // Add other user as participant
+        const { error: otherUserError } = await supabase
+          .from("chat_participants")
+          .insert({
+            chat_id: chatId,
+            user_id: otherUserId
+          });
+          
+        if (otherUserError) throw otherUserError;
+      }
+      
+      // Navigate to chat
+      navigate(`/chat/${chatId}`);
+    } catch (error: any) {
+      console.error("Error starting chat:", error.message);
+      toast({
+        title: "خطأ في بدء المحادثة",
+        description: "حدث خطأ أثناء محاولة بدء المحادثة",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -85,7 +172,22 @@ const SearchUsers = () => {
         </Button>
       </div>
 
-      {results.length > 0 ? (
+      {isSearching ? (
+        <div className="space-y-2">
+          {Array(3).fill(0).map((_, i) => (
+            <div key={i} className="flex items-center justify-between p-3 bg-accent rounded-lg">
+              <div className="flex items-center space-x-3 rtl:space-x-reverse">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </div>
+              <Skeleton className="h-9 w-16" />
+            </div>
+          ))}
+        </div>
+      ) : results.length > 0 ? (
         <div className="space-y-2">
           <h3 className="font-medium text-lg">نتائج البحث</h3>
           <div className="space-y-2">
@@ -96,13 +198,13 @@ const SearchUsers = () => {
               >
                 <div className="flex items-center space-x-3 rtl:space-x-reverse">
                   <Avatar>
-                    <AvatarImage src={user.avatar} />
+                    <AvatarImage src={user.avatar_url || undefined} />
                     <AvatarFallback className="bg-primary/20 text-primary">
-                      {user.name.charAt(0).toUpperCase()}
+                      {user.username.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-medium">{user.name}</p>
+                    <p className="font-medium">{user.username}</p>
                     <p className="text-sm text-muted-foreground">{user.email}</p>
                   </div>
                 </div>

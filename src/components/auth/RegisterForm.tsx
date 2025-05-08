@@ -1,12 +1,13 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const RegisterForm = () => {
   const [email, setEmail] = useState("");
@@ -14,38 +15,29 @@ const RegisterForm = () => {
   const [username, setUsername] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { signUp } = useAuth();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     
     if (!email || !password || !username) {
-      toast({
-        title: "خطأ",
-        description: "يرجى ملء جميع الحقول المطلوبة",
-        variant: "destructive",
-      });
+      setError("يرجى ملء جميع الحقول المطلوبة");
       return;
     }
     
     setIsLoading(true);
     
-    // In a real app, here we would connect to Supabase
-    // This is just a mock to show the flow
-    setTimeout(() => {
-      // Simulated successful registration
-      localStorage.setItem("chatUser", JSON.stringify({ email, username }));
-      
-      toast({
-        title: "تم التسجيل بنجاح",
-        description: "تم إنشاء حسابك بنجاح",
-      });
-      
+    try {
+      await signUp(email, password, username);
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
       setIsLoading(false);
-      navigate("/chats");
-    }, 1000);
+    }
   };
 
   return (
@@ -57,6 +49,11 @@ const RegisterForm = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
         <form onSubmit={handleRegister}>
           <div className="space-y-4">
             <div className="space-y-2">

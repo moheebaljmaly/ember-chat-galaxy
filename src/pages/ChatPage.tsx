@@ -1,176 +1,230 @@
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Navigate } from "react-router-dom";
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatMessage from "@/components/chat/ChatMessage";
 import ChatInput from "@/components/chat/ChatInput";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/components/ui/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
-// Mock chat data for different users
-const mockChatsData: Record<string, any> = {
-  "1": {
-    user: { id: "1", name: "أحمد محمد", status: "متصل الآن" },
-    messages: [
-      { id: "1", content: "مرحباً، كيف حالك؟", timestamp: new Date(Date.now() - 2 * 3600000), isOutgoing: false },
-      { id: "2", content: "أنا بخير، شكراً على السؤال! ماذا عنك؟", timestamp: new Date(Date.now() - 1.9 * 3600000), isOutgoing: true, status: "read" },
-      { id: "3", content: "أنا جيد أيضاً. هل انتهيت من العمل على المشروع؟", timestamp: new Date(Date.now() - 1.8 * 3600000), isOutgoing: false },
-      { id: "4", content: "نعم، انتهيت منه البارحة. سأرسل لك الملفات قريباً", timestamp: new Date(Date.now() - 15 * 60000), isOutgoing: true, status: "read" },
-    ],
-  },
-  "2": {
-    user: { id: "2", name: "سارة أحمد", status: "غير متصل" },
-    messages: [
-      { id: "1", content: "هل انتهيت من المشروع؟", timestamp: new Date(Date.now() - 2 * 3600000), isOutgoing: false },
-      { id: "2", content: "أحتاج إلى يوم إضافي لإكماله", timestamp: new Date(Date.now() - 1.9 * 3600000), isOutgoing: true, status: "delivered" },
-      { id: "3", content: "حسناً، لا مشكلة. أخبرني عندما تنتهي منه", timestamp: new Date(Date.now() - 1.8 * 3600000), isOutgoing: false },
-    ],
-  },
-  "3": {
-    user: { id: "3", name: "محمد علي", status: "آخر ظهور اليوم 10:30 صباحاً" },
-    messages: [
-      { id: "1", content: "سنلتقي غداً إن شاء الله", timestamp: new Date(Date.now() - 1 * 86400000), isOutgoing: false },
-      { id: "2", content: "في نفس المكان؟", timestamp: new Date(Date.now() - 23 * 3600000), isOutgoing: true, status: "read" },
-      { id: "3", content: "نعم، في الساعة الثالثة", timestamp: new Date(Date.now() - 22 * 3600000), isOutgoing: false },
-      { id: "4", content: "تمام، سأكون هناك", timestamp: new Date(Date.now() - 21 * 3600000), isOutgoing: true, status: "read" },
-    ],
-  },
-  "4": {
-    user: { id: "4", name: "فاطمة حسن", status: "آخر ظهور اليوم 9:15 مساءً" },
-    messages: [
-      { id: "1", content: "أرسلت لك الملف المطلوب", timestamp: new Date(Date.now() - 3 * 86400000), isOutgoing: false },
-      { id: "2", content: "شكراً جزيلاً! سأراجعه وأرد عليك", timestamp: new Date(Date.now() - 3 * 86400000 + 1 * 3600000), isOutgoing: true, status: "read" },
-    ],
-  },
+type Message = {
+  id: string;
+  content: string;
+  created_at: string;
+  sender_id: string;
+  read_at: string | null;
+};
+
+type ChatPartner = {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+  status?: string;
 };
 
 const ChatPage = () => {
-  const { id } = useParams<{ id: string }>();
-  const [chatData, setChatData] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { id: chatId } = useParams<{ id: string }>();
+  const { user, isLoading } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [chatPartner, setChatPartner] = useState<ChatPartner | null>(null);
+  const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Fetch chat data
+  
   useEffect(() => {
-    if (!id) return;
-    
-    // Simulate API call with timeout
-    const timer = setTimeout(() => {
-      const data = mockChatsData[id];
-      
-      if (data) {
-        setChatData(data);
-        setMessages(data.messages);
-      }
-      
-      setIsLoading(false);
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [id]);
+    if (!chatId || !user) return;
 
-  // Scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+    const fetchChatDetails = async () => {
+      try {
+        // Get the chat partner
+        const { data: participants, error: participantsError } = await supabase
+          .from("chat_participants")
+          .select(`
+            user_id,
+            profiles (
+              id,
+              username,
+              avatar_url
+            )
+          `)
+          .eq("chat_id", chatId)
+          .neq("user_id", user.id);
+
+        if (participantsError) throw participantsError;
+        
+        if (participants && participants.length > 0) {
+          setChatPartner({
+            id: participants[0].profiles.id,
+            username: participants[0].profiles.username,
+            avatar_url: participants[0].profiles.avatar_url,
+            status: "متصل" // We could implement a presence system for this
+          });
+        }
+
+        // Get messages
+        const { data: messagesData, error: messagesError } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("chat_id", chatId)
+          .order("created_at", { ascending: true });
+
+        if (messagesError) throw messagesError;
+        
+        setMessages(messagesData || []);
+        
+        // Mark unread messages as read
+        if (messagesData && messagesData.length > 0) {
+          const unreadMessages = messagesData.filter(
+            msg => msg.sender_id !== user.id && !msg.read_at
+          );
+
+          if (unreadMessages.length > 0) {
+            const unreadIds = unreadMessages.map(msg => msg.id);
+            
+            await supabase
+              .from("messages")
+              .update({ read_at: new Date().toISOString() })
+              .in("id", unreadIds);
+          }
+        }
+        
+      } catch (error: any) {
+        console.error("Error fetching chat details:", error.message);
+        toast({
+          title: "خطأ",
+          description: "حدث خطأ أثناء تحميل المحادثة",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChatDetails();
+    
+    // Set up real-time listener for new messages
+    const messagesSubscription = supabase
+      .channel('messages-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `chat_id=eq.${chatId}`
+        },
+        async (payload) => {
+          const newMessage = payload.new as Message;
+          
+          // If the new message is from the other user, mark it as read
+          if (newMessage.sender_id !== user.id) {
+            await supabase
+              .from("messages")
+              .update({ read_at: new Date().toISOString() })
+              .eq("id", newMessage.id);
+          }
+          
+          setMessages(currentMessages => [...currentMessages, newMessage]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messagesSubscription);
+    };
+  }, [chatId, user]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Handle send message
-  const handleSendMessage = (content: string) => {
-    if (!content.trim() || !chatData) return;
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleSendMessage = async (content: string) => {
+    if (!user || !chatId || !content.trim()) return;
     
-    const newMessage = {
-      id: `temp-${Date.now()}`,
-      content,
-      timestamp: new Date(),
-      isOutgoing: true,
-      status: "sent" as const,
-    };
-    
-    setMessages((prev) => [...prev, newMessage]);
-    
-    // Simulate message sending and status updates
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: "delivered" } : msg
-        )
-      );
-      
-      // Simulate reply after some time
-      if (Math.random() > 0.5) {
-        setTimeout(() => {
-          const replies = [
-            "حسناً",
-            "تمام، فهمت",
-            "شكراً لك",
-            "سأكون متواجد لاحقاً",
-            "أراك قريباً",
-          ];
-          
-          const replyMessage = {
-            id: `reply-${Date.now()}`,
-            content: replies[Math.floor(Math.random() * replies.length)],
-            timestamp: new Date(),
-            isOutgoing: false,
-          };
-          
-          setMessages((prev) => [...prev, replyMessage]);
-          
-          // Mark messages as read
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.isOutgoing && msg.status === "delivered"
-                ? { ...msg, status: "read" }
-                : msg
-            )
-          );
-        }, 3000 + Math.random() * 5000);
-      }
-    }, 1000);
+    try {
+      await supabase
+        .from("messages")
+        .insert({
+          chat_id: chatId,
+          sender_id: user.id,
+          content: content.trim(),
+        });
+    } catch (error: any) {
+      console.error("Error sending message:", error.message);
+      toast({
+        title: "خطأ",
+        description: "فشل إرسال الرسالة",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p>جاري تحميل المحادثة...</p>
-        </div>
-      </div>
-    );
+    return <div className="flex justify-center items-center h-screen">جارِ التحميل...</div>;
   }
 
-  if (!chatData) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <p className="text-lg font-medium">لم يتم العثور على المحادثة</p>
-        </div>
-      </div>
-    );
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
   return (
-    <div className="flex flex-col h-screen bg-chat-light dark:bg-chat-dark">
-      <ChatHeader name={chatData.user.name} status={chatData.user.status} />
-      
-      <div className="flex-1 overflow-y-auto p-4">
-        {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            content={message.content}
-            timestamp={new Date(message.timestamp)}
-            isOutgoing={message.isOutgoing}
-            status={message.status}
-          />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      
-      <ChatInput onSendMessage={handleSendMessage} />
+    <div className="flex flex-col h-screen">
+      {loading ? (
+        <>
+          <div className="border-b p-3">
+            <div className="flex items-center space-x-4 rtl:space-x-reverse">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {Array(5).fill(0).map((_, i) => (
+              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'} mb-2`}>
+                <Skeleton className={`h-12 w-64 rounded-lg ${i % 2 === 0 ? 'rounded-tl-none' : 'rounded-tr-none'}`} />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          {chatPartner && (
+            <ChatHeader
+              name={chatPartner.username}
+              status={chatPartner.status}
+              avatar={chatPartner.avatar_url || undefined}
+            />
+          )}
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">ابدأ المحادثة الآن</p>
+              </div>
+            ) : (
+              messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  content={message.content}
+                  timestamp={new Date(message.created_at)}
+                  isOutgoing={message.sender_id === user.id}
+                  status={message.read_at ? "read" : "sent"}
+                />
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+          
+          <ChatInput onSendMessage={handleSendMessage} />
+        </>
+      )}
     </div>
   );
 };

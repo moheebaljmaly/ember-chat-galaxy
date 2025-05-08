@@ -2,18 +2,23 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { user, isLoading } = useAuth();
   
   // Check if user is already logged in
   useEffect(() => {
-    const userData = localStorage.getItem("chatUser");
-    if (userData) {
+    if (user && !isLoading) {
       // User already logged in, redirect to chats
       navigate("/chats");
     }
-  }, [navigate]);
+  }, [user, isLoading, navigate]);
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen">جارِ التحميل...</div>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-primary/5 to-background">
@@ -25,7 +30,7 @@ const Index = () => {
           </p>
         </div>
         
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-chat-primary to-chat-secondary mx-auto flex items-center justify-center">
+        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-indigo-500 mx-auto flex items-center justify-center">
           <span className="text-4xl text-white">💬</span>
         </div>
         

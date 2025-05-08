@@ -14,6 +14,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, username: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (updates: any) => Promise<void>;
+  resendConfirmationEmail: (email: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -95,12 +96,50 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       navigate("/chats");
     } catch (error: any) {
+      console.error("Login error:", error);
+      // تحسين رسائل الخطأ لتكون أكثر وضوحًا للمستخدم
+      let errorMessage = error.message;
+      
+      if (error.message.includes("Email not confirmed")) {
+        errorMessage = "لم يتم تأكيد البريد الإلكتروني بعد. يرجى التحقق من بريدك الإلكتروني للتأكيد.";
+      } else if (error.message.includes("Invalid login credentials")) {
+        errorMessage = "بيانات تسجيل الدخول غير صحيحة. يرجى التحقق من البريد الإلكتروني وكلمة المرور.";
+      }
+      
       toast({
         title: "خطأ في تسجيل الدخول",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
       throw error;
+    }
+  };
+
+  const resendConfirmationEmail = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "تم إرسال رابط التأكيد",
+        description: "يرجى التحقق من بريدك الإلكتروني للتأكيد",
+      });
+    } catch (error: any) {
+      let errorMessage = error.message;
+      
+      if (error.message.includes("For security purposes")) {
+        errorMessage = "لأسباب أمنية، يمكنك طلب رابط تأكيد جديد بعد فترة قصيرة.";
+      }
+      
+      toast({
+        title: "خطأ في إرسال رابط التأكيد",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
   };
 
@@ -120,10 +159,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       toast({
         title: "تم إنشاء الحساب بنجاح",
-        description: "تم تسجيل حسابك بنجاح",
+        description: "تم إرسال رابط تأكيد إلى بريدك الإلكتروني. يرجى التحقق من بريدك الإلكتروني لتأكيد حسابك قبل تسجيل الدخول.",
       });
       
-      navigate("/chats");
+      navigate("/login");
     } catch (error: any) {
       toast({
         title: "خطأ في إنشاء الحساب",
@@ -181,6 +220,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     signUp,
     signOut,
     updateProfile,
+    resendConfirmationEmail,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

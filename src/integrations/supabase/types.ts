@@ -47,16 +47,22 @@ export type Database = {
       }
       chats: {
         Row: {
+          chat_name: string | null
           created_at: string | null
           id: string
+          is_group: boolean | null
         }
         Insert: {
+          chat_name?: string | null
           created_at?: string | null
           id?: string
+          is_group?: boolean | null
         }
         Update: {
+          chat_name?: string | null
           created_at?: string | null
           id?: string
+          is_group?: boolean | null
         }
         Relationships: []
       }
@@ -65,25 +71,37 @@ export type Database = {
           chat_id: string
           content: string
           created_at: string | null
+          edited_at: string | null
+          file_url: string | null
           id: string
+          is_deleted: boolean | null
           read_at: string | null
           sender_id: string
+          type: string | null
         }
         Insert: {
           chat_id: string
           content: string
           created_at?: string | null
+          edited_at?: string | null
+          file_url?: string | null
           id?: string
+          is_deleted?: boolean | null
           read_at?: string | null
           sender_id: string
+          type?: string | null
         }
         Update: {
           chat_id?: string
           content?: string
           created_at?: string | null
+          edited_at?: string | null
+          file_url?: string | null
           id?: string
+          is_deleted?: boolean | null
           read_at?: string | null
           sender_id?: string
+          type?: string | null
         }
         Relationships: [
           {
@@ -108,6 +126,8 @@ export type Database = {
           created_at: string | null
           email: string
           id: string
+          is_online: boolean | null
+          last_seen: string | null
           updated_at: string | null
           username: string
         }
@@ -116,6 +136,8 @@ export type Database = {
           created_at?: string | null
           email: string
           id: string
+          is_online?: boolean | null
+          last_seen?: string | null
           updated_at?: string | null
           username: string
         }
@@ -124,10 +146,45 @@ export type Database = {
           created_at?: string | null
           email?: string
           id?: string
+          is_online?: boolean | null
+          last_seen?: string | null
           updated_at?: string | null
           username?: string
         }
         Relationships: []
+      }
+      unread_counts: {
+        Row: {
+          chat_id: string
+          count: number | null
+          user_id: string
+        }
+        Insert: {
+          chat_id: string
+          count?: number | null
+          user_id: string
+        }
+        Update: {
+          chat_id?: string
+          count?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unread_counts_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unread_counts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

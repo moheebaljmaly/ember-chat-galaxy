@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, Mail } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -14,14 +14,17 @@ const LoginForm = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEmailNotConfirmed, setIsEmailNotConfirmed] = useState(false);
   
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { signIn, resendConfirmationEmail } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsEmailNotConfirmed(false);
     
     if (!email || !password) {
       setError("يرجى إدخال البريد الإلكتروني وكلمة المرور");
@@ -33,9 +36,35 @@ const LoginForm = () => {
     try {
       await signIn(email, password);
     } catch (error: any) {
-      setError(error.message);
+      console.error("Login error:", error);
+      
+      if (error.message.includes("Email not confirmed")) {
+        setError("لم يتم تأكيد البريد الإلكتروني بعد. يرجى التحقق من بريدك الإلكتروني للتأكيد أو إعادة إرسال رسالة التأكيد.");
+        setIsEmailNotConfirmed(true);
+      } else if (error.message.includes("Invalid login credentials")) {
+        setError("بيانات تسجيل الدخول غير صحيحة. يرجى التحقق من البريد الإلكتروني وكلمة المرور.");
+      } else {
+        setError(error.message);
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setError("يرجى إدخال البريد الإلكتروني أولاً");
+      return;
+    }
+
+    setIsResending(true);
+    
+    try {
+      await resendConfirmationEmail(email);
+    } catch (error) {
+      console.error("Error resending confirmation:", error);
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -92,6 +121,20 @@ const LoginForm = () => {
                 </button>
               </div>
             </div>
+            
+            {isEmailNotConfirmed && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full flex items-center gap-2"
+                onClick={handleResendConfirmation}
+                disabled={isResending}
+              >
+                <Mail className="h-4 w-4" />
+                {isResending ? "جارٍ إرسال رابط التأكيد..." : "إعادة إرسال رابط التأكيد"}
+              </Button>
+            )}
+            
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "جارٍ تسجيل الدخول..." : "تسجيل الدخول"}
             </Button>
